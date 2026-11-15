@@ -1,0 +1,33 @@
+# Claude Code (local notes and settings)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
+# Generated output (rebuild with: python3 iptv_uk.py -d desired_channels.txt)
+playlist_master.m3u8
+playlist_desired.m3u8
+report.json
+*.log
+
+# Old local copy of the upstream Free-TV list (fetched live now)
+playlist_uk.m3u8
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.python-version
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Secrets, just in case
+.env
+.env.*
