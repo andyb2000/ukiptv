@@ -1,5 +1,9 @@
 # UK IPTV Playlist Builder
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)
+![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)
+
 This tool builds an IPTV playlist of free UK TV and radio channels that it has
 **checked are working**.
 
@@ -26,8 +30,8 @@ It needs only Python 3.9 or later, with no extra packages.
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/<repo>.git
-cd <repo>
+git clone https://github.com/andyb2000/ukiptv.git
+cd ukiptv
 
 # Build both playlists
 python3 iptv_uk.py -d desired_channels.txt
@@ -131,6 +135,17 @@ broadcasters' own services. You are responsible for making sure your use
 complies with the laws where you live and with each broadcaster's terms. For
 example, watching live BBC TV in the UK requires a TV Licence.
 
+## Contributing
+
+Found a working stream that's missing, a dead source, or a channel that
+matches the wrong thing? Please
+[open an issue](https://github.com/andyb2000/ukiptv/issues) or a pull request.
+Run `python3 iptv_uk.py -d desired_channels.txt --fast` before submitting to
+check nothing broke.
+
+The generated playlists (`playlist_*.m3u8`, `report.json`) aren't committed,
+because they go stale within hours. Build your own with the command above.
+
 ## License
 
-MIT. See `LICENSE` if one is included.
+Apache License 2.0. See [LICENSE](LICENSE).
