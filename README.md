@@ -245,20 +245,43 @@ All settings are in `tvh_sync.conf`. Each one is explained in
 
 ### Docker
 
+Build the image from the repo folder:
+
 ```bash
 docker build -t ukiptv-sync .
-docker run -d --name ukiptv-sync --restart unless-stopped \
-  -v /path/to/config:/config ukiptv-sync
 ```
 
-Put `tvh_sync.conf` and your channel list in `/path/to/config`. The container
-syncs every 6 hours and writes its backups and change log to
-`/path/to/config/.tvh_sync`. Do a dry run first:
+Make a config folder holding `tvh_sync.conf` and your channel list:
 
 ```bash
-docker run --rm -v /path/to/config:/config ukiptv-sync          # dry run
-docker run --rm -v /path/to/config:/config ukiptv-sync --status
+mkdir -p ~/ukiptv-config
+cp tvh_sync.conf.example ~/ukiptv-config/tvh_sync.conf
+cp desired_channels.txt ~/ukiptv-config/
+nano ~/ukiptv-config/tvh_sync.conf     # url, username, password
 ```
+
+In `url`, use the Tvheadend machine's LAN IP, even if Tvheadend runs on the
+same host. Inside a container, `localhost` means the container itself.
+
+Run it once to see the plan. With no options it's a dry run:
+
+```bash
+docker run --rm -v ~/ukiptv-config:/config ukiptv-sync
+docker run --rm -v ~/ukiptv-config:/config ukiptv-sync --status
+```
+
+When the plan looks right, apply it once, then leave it running and syncing
+every 6 hours:
+
+```bash
+docker run --rm -v ~/ukiptv-config:/config ukiptv-sync --apply
+docker run -d --name ukiptv-sync --restart unless-stopped \
+  -v ~/ukiptv-config:/config ukiptv-sync --apply --interval 360
+docker logs -f ukiptv-sync
+```
+
+Backups and the change log go to `~/ukiptv-config/.tvh_sync`. To make those
+files belong to you rather than root, add `--user "$(id -u):$(id -g)"`.
 
 ### How the failover behaves
 
