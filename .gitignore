@@ -28,6 +28,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# tvh_sync.py: your settings (has your Tvheadend password) and its local state
+tvh_sync.conf
+.tvh_sync/
+
 # Secrets, just in case
 .env
 .env.*

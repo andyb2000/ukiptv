@@ -26,6 +26,9 @@ It needs only Python 3.9 or later, with no extra packages.
 - **Official BBC streams**: current URLs for every BBC channel, including each regional BBC One.
 - **Programme guide (EPG) fix-up**: it rewrites each channel's `tvg-id` so the guide in your player shows listings.
 - **Fast**: about 550 streams tested in parallel in about 30 seconds.
+- **Tvheadend failover** (optional): `tvh_sync.py` adds the working streams to
+  Tvheadend as backups for your Freeview/Freesat channels. See
+  [Tvheadend failover](#tvheadend-failover-tvh_syncpy).
 
 ## Quick start
 
@@ -107,6 +110,165 @@ Streams change often, so rebuild regularly. For example, with cron every 6 hours
 0 */6 * * * cd /path/to/repo && python3 iptv_uk.py -d desired_channels.txt >/dev/null 2>&1
 ```
 
+## Tvheadend failover (`tvh_sync.py`)
+
+If you watch TV through [Tvheadend](https://tvheadend.org/) with an aerial or
+dish, a poor signal makes channels break up or drop out. `tvh_sync.py` adds
+verified IPTV streams to Tvheadend as **backup services** on your existing
+channels. When the tuner loses the signal, Tvheadend switches to the IPTV
+stream. Channels that you can't receive over the air are added as new
+IPTV-only channels.
+
+It talks to Tvheadend's HTTP API (port 9981), so it can run on another machine
+or in its own Docker container. Written for Tvheadend 4.3.
+
+### What it does in Tvheadend
+
+- **One IPTV network that it owns**, called `UKIPTV (tvh_sync)` by default.
+  Each stream it uses becomes one mux in that network. By default it keeps the
+  best 2 working streams per channel.
+- **Backup services on your channels.** For each channel in your list it finds
+  your Tvheadend channel with the same name (for example `BBC One HD`) and adds
+  its IPTV services to that channel's service list, with a **lower priority**
+  than your tuners (`-5`, then `-6`). Tvheadend always prefers the aerial/dish
+  and only falls back to IPTV when that fails.
+- **IPTV-only channels** for entries with no matching channel of yours, such
+  as BBC Four on Freeview-only setups or the BBC radio stations. These are
+  numbered from 1000 and tagged `IPTV`, plus a hidden marker tag
+  `ukiptv-managed`.
+- **Housekeeping on every run.** Dead streams are replaced. Muxes for streams
+  that are gone are deleted. Channels you remove from your list are cleaned up.
+  If Tvheadend can't play a stream, it's skipped for 24 hours. In `auto` mode,
+  it's retried once through ffmpeg first.
+
+### What it never does
+
+- It never edits, renames or deletes anything it didn't create. The only
+  change it makes to your own channels is adding or removing **its own**
+  services in their service list. Their name, number, EPG, tags and other
+  services stay as they are.
+- It makes no changes unless you pass `--apply`. Without it, it prints the plan.
+- Before every `--apply` it saves a backup of the relevant Tvheadend state in
+  `.tvh_sync/backups/`. It logs each change to `.tvh_sync/changes.log`.
+
+### Setup
+
+1. **In Tvheadend**, create a user for the script (Configuration > Users).
+   Give it an access entry with **admin** rights, because Tvheadend's network
+   and channel APIs are admin-only.
+2. **Copy the settings file** and fill in the address and login:
+
+   ```bash
+   cp tvh_sync.conf.example tvh_sync.conf
+   nano tvh_sync.conf     # url, username, password
+   ```
+
+   `tvh_sync.conf` is git-ignored. You can also pass the login in the
+   environment variables `TVH_URL`, `TVH_USER`, `TVH_PASSWORD` or
+   `TVH_PASSWORD_FILE`.
+3. **Look at the plan** before changing anything:
+
+   ```bash
+   python3 tvh_sync.py
+   ```
+
+   It lists what it would create and which of your channels each stream would
+   back up:
+
+   ```text
+   + IPTV network 'UKIPTV (tvh_sync)'
+   + mux BBC One: [bbc] http://vs-hls-pushb-uk-live.akamaized.net/...
+   = BBC One: failover for your channel(s) 'BBC One HD'
+   + channel 'BBC Four' #1004 (IPTV only)
+   ```
+
+   If a channel matched the wrong thing, or didn't match because your
+   channel's name is different, fix it in the `[channel_map]` section:
+
+   ```ini
+   [channel_map]
+   # back up these channels of yours
+   BBC One = BBC One Yorks HD, BBC ONE Yorks
+   # give it an IPTV-only channel instead
+   BBC News = new
+   # leave it out of Tvheadend
+   QVC = none
+   ```
+4. **Apply it**:
+
+   ```bash
+   python3 tvh_sync.py --apply
+   ```
+
+   New muxes need a few seconds for Tvheadend to scan them. Anything not
+   scanned within `scan_wait` is finished on the next run.
+5. **Run it regularly** to keep the streams fresh: with cron, or with the
+   Docker container below.
+
+### Commands
+
+```text
+python3 tvh_sync.py                       # dry run: show the plan
+python3 tvh_sync.py --apply               # sync Tvheadend
+python3 tvh_sync.py --status              # what it manages now
+python3 tvh_sync.py --disable --apply     # switch off all its streams and channels
+python3 tvh_sync.py --enable --apply      # switch them back on
+python3 tvh_sync.py --uninstall --apply   # remove everything it created
+python3 tvh_sync.py --apply --interval 360   # keep running, sync every 6 hours
+
+  -c, --config FILE   settings file (default: tvh_sync.conf, or $TVH_SYNC_CONFIG)
+  -y, --yes           don't ask for confirmation before --uninstall --apply
+```
+
+- **`--disable`** switches off the network, its muxes and the IPTV-only
+  channels, so Tvheadend only uses your tuners. Nothing is deleted.
+  Scheduled syncs do nothing until you run `--enable --apply`.
+- **`--uninstall`** removes its services from your channels, then deletes its
+  IPTV-only channels, its network (with all muxes and services) and the tags
+  it created. Your Tvheadend is left as it was before the first run.
+
+### Settings
+
+All settings are in `tvh_sync.conf`. Each one is explained in
+[`tvh_sync.conf.example`](tvh_sync.conf.example). The main ones are:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `streams_per_channel` | `2` | Backup streams per channel |
+| `service_priority` | `-5` | Priority of IPTV services. Below `0` means DVB first. |
+| `prefer_iptv` | (empty) | Channels where IPTV should win over DVB |
+| `attach_to_existing` | `yes` | Add streams to your channels with the same name |
+| `create_channels` | `yes` | Create IPTV-only channels for the rest |
+| `channel_number_start` | `1000` | Numbering for IPTV-only channels |
+| `stream_mode` | `auto` | `direct`, `ffmpeg` (`pipe://`), or `auto` (ffmpeg only when needed) |
+| `ffmpeg_path` | `/usr/bin/ffmpeg` | ffmpeg path **inside the Tvheadend container** |
+
+### Docker
+
+```bash
+docker build -t ukiptv-sync .
+docker run -d --name ukiptv-sync --restart unless-stopped \
+  -v /path/to/config:/config ukiptv-sync
+```
+
+Put `tvh_sync.conf` and your channel list in `/path/to/config`. The container
+syncs every 6 hours and writes its backups and change log to
+`/path/to/config/.tvh_sync`. Do a dry run first:
+
+```bash
+docker run --rm -v /path/to/config:/config ukiptv-sync          # dry run
+docker run --rm -v /path/to/config:/config ukiptv-sync --status
+```
+
+### How the failover behaves
+
+Tvheadend picks the service with the highest priority, which is your tuner.
+It moves to the next service when the current one fails to tune, or when its
+data stops (the tuner's data timeout). So a complete signal loss switches to
+IPTV within a few seconds. A signal that is still delivering data but with
+glitches won't trigger a switch. For channels that are always bad, add them to
+`prefer_iptv`.
+
 ## Sources
 
 | Source | What it provides |
@@ -126,6 +288,9 @@ Streams change often, so rebuild regularly. For example, with cron every 6 hours
 - **Some streams only work in the UK.** BBC and some others are geo-blocked.
 - **YouTube links can't be tested.** Use `--include-unverified` to keep them.
 - A stream that passes the check can still fail later. Rebuilding often helps.
+- **Tvheadend can't play every stream directly.** Audio-only HLS (radio) and
+  DASH streams need ffmpeg in the Tvheadend container (`stream_mode = auto`
+  handles this).
 
 ## Disclaimer
 

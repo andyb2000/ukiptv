@@ -1,0 +1,109 @@
+# tvh_sync.py settings.
+# Copy this file to tvh_sync.conf and edit it. tvh_sync.conf is git-ignored.
+# Comments must be on their own line (a '#' after a value is part of the value).
+# Relative paths are relative to this file's folder.
+
+[tvheadend]
+# Web address of Tvheadend's HTTP port (usually 9981).
+url = http://192.168.1.10:9981
+
+# A dedicated Tvheadend user. It needs admin rights, because the network,
+# mux and channel APIs are admin-only (Configuration > Users > Access entries).
+username = ukiptv
+password = change-me
+# Or read the password from a file instead (for example a Docker secret):
+# password_file = /run/secrets/tvh_password
+
+# Environment variables override these: TVH_URL, TVH_USER, TVH_PASSWORD,
+# TVH_PASSWORD_FILE.
+
+# Seconds to wait for each API call.
+timeout = 20
+
+
+[sync]
+# Channel list, same format as for iptv_uk.py.
+desired = desired_channels.txt
+
+# Everything this script creates lives in this one IPTV network. It finds its
+# own things by this name, so don't rename it in Tvheadend.
+network_name = UKIPTV (tvh_sync)
+
+# Internal (hidden from clients) tag put on the IPTV-only channels it creates.
+marker_tag = ukiptv-managed
+# Visible tag for those channels too. Leave empty for none.
+extra_tag = IPTV
+
+# How many working streams to add per channel (failover order).
+streams_per_channel = 2
+
+# Priority of the IPTV services (-10..10). DVB services default to 0, so a
+# negative value keeps your aerial/dish first and IPTV as the fallback. The
+# 2nd stream gets one less, and so on.
+service_priority = -5
+# Priority of the IPTV network itself. Tvheadend's default for both tuners
+# and IPTV networks is 1. Only used when the network is first created.
+network_priority = 1
+
+# Channels where IPTV should win over DVB (comma-separated display names).
+# Their IPTV services get a positive priority instead.
+prefer_iptv =
+
+# Add IPTV streams as backup services on your existing channels whose name
+# matches (BBC One HD, BBC ONE, ...). See also [channel_map] below.
+attach_to_existing = yes
+
+# Create channels for entries that have no matching channel of yours.
+create_channels = yes
+# Number for those new channels: start + position in the desired list.
+# 0 = don't number them.
+channel_number_start = 1000
+
+# How Tvheadend opens each stream:
+#   direct  Tvheadend's own HTTP/HLS client (custom headers are passed on)
+#   ffmpeg  everything through ffmpeg (pipe://), needs ffmpeg in Tvheadend's container
+#   auto    direct, and ffmpeg for streams Tvheadend can't play directly
+#           (DASH, or a direct stream whose scan failed)
+stream_mode = auto
+# ffmpeg path INSIDE the Tvheadend container/host.
+ffmpeg_path = /usr/bin/ffmpeg
+
+# Seconds to wait for Tvheadend to scan new muxes before mapping them.
+# Anything not finished is mapped on the next run.
+scan_wait = 300
+
+# Hours to skip a stream after Tvheadend failed to play it.
+failed_retry_hours = 24
+
+# Folder for the change log, backups and the list of failed streams.
+state_dir = .tvh_sync
+keep_backups = 30
+
+
+[streams]
+# Settings for finding and testing streams (as in iptv_uk.py).
+timeout = 10
+workers = 32
+retries = 1
+# Built-in sources to skip: bbc, free-tv, iptv-org, pluto (comma-separated).
+exclude_sources =
+# Extra M3U files or URLs (comma-separated), lowest priority.
+extra_sources =
+# XMLTV guide used to correct EPG ids, or "none".
+# epg_map = https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz
+
+
+[channel_map]
+# Optional. Which of YOUR Tvheadend channels each desired entry backs up.
+# Without an entry here, channels are matched by name (ignoring case, spaces,
+# HD/SD and so on). Use this when the names differ:
+#
+#   Desired name = Your channel name, Another channel name
+#
+# Special values:
+#   new   don't attach; give it an IPTV-only channel of its own
+#   none  leave this entry out of Tvheadend completely
+#
+# BBC One = BBC One Yorks HD, BBC ONE Yorks
+# BBC News = new
+# QVC = none
