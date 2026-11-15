@@ -16,72 +16,19 @@ BBC Four
 ITV 3
 ITV 4
 E4
+E4+1
+E4 Extra
 More4
+More4+1
+Dmax
 Film4
 5Star | 5 Star
 5USA
 Dave
 Yesterday
 Drama
-STV
-S4C
-BBC Scotland
-BBC Alba
-BBC One Scotland
-BBC One Wales
-BBC One Northern Ireland
+ITV1+1
 
 # --- Entertainment / film
-Talking Pictures TV
-Great! Movies
-Great! Romance
-True Crime
 Together TV
 Blaze
-That's TV
-TBN UK
-
-# --- Kids
-CBBC
-CBeebies
-Pop
-
-# --- News
-BBC News
-BBC Parliament
-Sky News
-GB News
-TalkTV
-France 24 | France 24 English
-Bloomberg TV | Bloomberg
-NHK World Japan | NHK World
-Arirang World | Arirang
-TRT World
-
-# --- Shopping
-QVC UK | QVC
-QVC Beauty
-QVC Extra
-QVC Style
-TJC
-GemsTV
-Jewellery Maker
-Hobby Maker
-
-# --- Music
-Now 70s
-Now 80s
-Now Rock
-
-# --- Radio
-BBC Radio 1
-BBC Radio 2
-BBC Radio 3
-BBC Radio 4
-BBC Radio 5 Live
-BBC Radio 6 Music
-BBC Radio 1Xtra
-BBC Radio 4 Extra
-BBC Radio 5 Sports Extra
-BBC Asian Network
-BBC World Service
