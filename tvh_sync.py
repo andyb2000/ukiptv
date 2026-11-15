@@ -564,6 +564,11 @@ def ensure_tag(tvh: Tvh, snap: Snapshot, ch: Changer, name: str, internal: bool)
     return None
 
 
+def channel_keys(name: str) -> set[str]:
+    """Match keys for one of your channel names. 'U&Dave' also matches 'Dave' (UKTV's branding)."""
+    return {k for k in (iu.norm(name), iu.norm(re.sub(r"(?i)^u\s*(and|&)\s*", "", name))) if k}
+
+
 def existing_targets(cfg: Config, snap: Snapshot, w: Wanted, managed_ids: set[str]) -> list[dict] | None:
     """Your own channels this entry should back up. None means 'use a channel of our own'."""
     mapped = cfg.channel_map.get(iu.norm(w.display))
@@ -578,7 +583,7 @@ def existing_targets(cfg: Config, snap: Snapshot, w: Wanted, managed_ids: set[st
         return hits
     if not cfg.attach_to_existing:
         return None
-    hits = [c for c in others if c.get("enabled", True) and iu.norm(c.get("name", "")) in w.keys]
+    hits = [c for c in others if c.get("enabled", True) and channel_keys(c.get("name", "")) & w.keys]
     return hits or None
 
 
@@ -588,12 +593,12 @@ def similar_channels(snap: Snapshot, w: Wanted, managed_ids: set[str], n: int = 
     keys = {k for k in w.keys if k}
     scored = []
     for c in chans:
-        k = iu.norm(c["name"])
-        if not k:
+        cks = channel_keys(c["name"])
+        if not cks:
             continue
-        exact = k in keys
-        prefix = any(k.startswith(x) or x.startswith(k) for x in keys if min(len(k), len(x)) >= 4)
-        ratio = max(difflib.SequenceMatcher(None, k, x).ratio() for x in keys)
+        exact = bool(cks & keys)
+        prefix = any(k.startswith(x) or x.startswith(k) for k in cks for x in keys if min(len(k), len(x)) >= 4)
+        ratio = max(difflib.SequenceMatcher(None, k, x).ratio() for k in cks for x in keys)
         if exact or prefix or ratio >= 0.8:
             scored.append((not exact, not prefix, -ratio, c))
     scored.sort(key=lambda t: t[:3])
@@ -946,7 +951,8 @@ def run_list_channels(cfg: Config, tvh: Tvh) -> int:
         if ours:
             notes.append(f"{ours} IPTV service(s)")
         say(f"{str(c.get('number') or ''):>7}  {'yes' if c.get('enabled', True) else 'no':<3} "
-            f"{c.get('name', ''):<32} {iu.norm(c.get('name', '')):<24} {', '.join(notes)}")
+            f"{c.get('name', ''):<32} {' / '.join(sorted(channel_keys(c.get('name', '')))):<24} "
+            f"{', '.join(notes)}")
     say(f"\n{len(snap.channels)} channels. A desired entry matches a channel when one of its names "
         "has the same match key.")
     return 0
