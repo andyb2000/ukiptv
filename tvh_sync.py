@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import base64
 import configparser
+import difflib
 import hashlib
 import json
 import os
@@ -581,6 +582,24 @@ def existing_targets(cfg: Config, snap: Snapshot, w: Wanted, managed_ids: set[st
     return hits or None
 
 
+def similar_channels(snap: Snapshot, w: Wanted, managed_ids: set[str], n: int = 4) -> list[str]:
+    """Your channels whose names look like this entry (for hints when nothing matched exactly)."""
+    chans = [c for c in snap.channels if c["uuid"] not in managed_ids and c.get("name")]
+    keys = {k for k in w.keys if k}
+    scored = []
+    for c in chans:
+        k = iu.norm(c["name"])
+        if not k:
+            continue
+        exact = k in keys
+        prefix = any(k.startswith(x) or x.startswith(k) for x in keys if min(len(k), len(x)) >= 4)
+        ratio = max(difflib.SequenceMatcher(None, k, x).ratio() for x in keys)
+        if exact or prefix or ratio >= 0.8:
+            scored.append((not exact, not prefix, -ratio, c))
+    scored.sort(key=lambda t: t[:3])
+    return [repr(c["name"]) + ("" if c.get("enabled", True) else " (disabled)") for *_, c in scored[:n]]
+
+
 def wait_for_scan(tvh: Tvh, cfg: Config, mux_ids: set[str], wait: int) -> None:
     if not mux_ids or wait <= 0:
         return
@@ -716,6 +735,13 @@ def run_sync(cfg: Config, tvh: Tvh, state: State, apply: bool) -> int:
                     and m.get("iptv_muxname") == w.display for sv in snap.services_of(m["uuid"])]
         svcs_of[w.display] = svcs
         targets = existing_targets(cfg, snap, w, managed_ids)
+        if targets is None and w.streams and iu.norm(w.display) not in cfg.channel_map:
+            near = similar_channels(snap, w, managed_ids)
+            if near:
+                say(f"  ? {w.display}: no channel of yours has this name, so it gets its own channel."
+                    f"\n      Similar: {', '.join(near)}"
+                    f"\n      To use one as failover instead, add to [channel_map]:  "
+                    f"{w.display} = {near[0].split(' (disabled)')[0].strip(chr(39))}")
         if targets is None:
             if cfg.create_channels and (w.streams or any(c.get("name") == w.display for c in managed)):
                 want_managed[w.display] = w
@@ -902,6 +928,30 @@ def run_uninstall(cfg: Config, tvh: Tvh, state: State, apply: bool, yes: bool) -
 
 # ===================================================================== status
 
+def run_list_channels(cfg: Config, tvh: Tvh) -> int:
+    snap = Snapshot.fetch(tvh, cfg)
+    managed_ids = {c["uuid"] for c in snap.managed_channels(cfg.marker_tag)}
+    our_svc = {s["uuid"] for s in snap.services}
+    say(f"{'Number':>7}  {'On':<3} {'Name':<32} {'Match key':<24} Notes")
+    def num(c):
+        try:
+            return float(c.get("number") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    for c in sorted(snap.channels, key=lambda c: (num(c), c.get("name", ""))):
+        notes = []
+        if c["uuid"] in managed_ids:
+            notes.append("created by tvh_sync")
+        ours = sum(1 for s in c.get("services") or [] if s in our_svc)
+        if ours:
+            notes.append(f"{ours} IPTV service(s)")
+        say(f"{str(c.get('number') or ''):>7}  {'yes' if c.get('enabled', True) else 'no':<3} "
+            f"{c.get('name', ''):<32} {iu.norm(c.get('name', '')):<24} {', '.join(notes)}")
+    say(f"\n{len(snap.channels)} channels. A desired entry matches a channel when one of its names "
+        "has the same match key.")
+    return 0
+
+
 def run_status(cfg: Config, tvh: Tvh) -> int:
     info = tvh.call("serverinfo")
     say(f"Tvheadend {info.get('sw_version', '?')} at {cfg.url} (API v{info.get('api_version', '?')})")
@@ -938,6 +988,8 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="make the changes (default is a dry run)")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--status", action="store_true", help="show what tvh_sync manages in Tvheadend")
+    mode.add_argument("--list-channels", action="store_true",
+                      help="list all your Tvheadend channels with the key used for name matching")
     mode.add_argument("--disable", action="store_true", help="switch off every IPTV stream it created")
     mode.add_argument("--enable", action="store_true", help="switch them back on after --disable")
     mode.add_argument("--uninstall", action="store_true", help="remove everything it created")
@@ -955,6 +1007,8 @@ def main() -> int:
     state = State(cfg)
 
     def once() -> int:
+        if args.list_channels:
+            return run_list_channels(cfg, tvh)
         if args.status:
             return run_status(cfg, tvh)
         if args.disable or args.enable:
@@ -969,7 +1023,7 @@ def main() -> int:
         except TvhError as ex:
             print(f"Tvheadend error: {ex}", file=sys.stderr)
             return 1
-    if args.status or args.disable or args.enable or args.uninstall:
+    if args.status or args.list_channels or args.disable or args.enable or args.uninstall:
         print("--interval only works with a normal sync", file=sys.stderr)
         return 2
     while True:
